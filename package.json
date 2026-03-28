@@ -1,0 +1,15 @@
+{
+  "name": "hackathon-saas-agent",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "build": "pnpm --filter './apps/*' build",
+    "orchestrator": "pnpm --filter orchestrator dev",
+    "demo-ui": "pnpm --filter demo-ui dev"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=8"
+  }
+}
