@@ -55,7 +55,7 @@ export default function ActivityFeed({ events, isRunning }: Props) {
     <div className="flex-1 overflow-y-auto p-4 space-y-0.5">
       {events.length === 0 && !isRunning && (
         <p className="text-emerald-700 text-xs italic font-mono">
-          // waiting for build to start…
+          waiting for build to start...
         </p>
       )}
       {events.map((e, i) => {

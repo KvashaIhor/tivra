@@ -1,13 +1,13 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import crypto from 'crypto';
-import QRCode from 'qrcode';
-import { BuildState, AgentEvent, EmitFn } from './types/spec';
+import { BuildState, AgentEvent, EmitFn, BuildRequestSchema, BuildCredentialOverrides } from './types/spec';
 import { parsePromptToSpec } from './agents/specParser';
 import { provisionBackend } from './agents/backendProvisioner';
 import { generateCode } from './agents/codeGenerator';
 import { deployApp } from './agents/deployer';
 import { log } from './utils/log';
+import { runWithBuildCredentials } from './runtime/buildCredentials';
 
 const app = express();
 app.use(express.json());
@@ -20,7 +20,17 @@ app.use((req, _res, next) => {
 
 // Allow demo-ui (Next.js dev on :3000) to call this server
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN ?? 'http://localhost:3000');
+  const configuredOrigin = (process.env.CORS_ORIGIN ?? 'http://localhost:3000').replace(/\/+$/, '');
+  const requestOrigin = typeof req.headers.origin === 'string'
+    ? req.headers.origin.replace(/\/+$/, '')
+    : null;
+
+  const allowOrigin = requestOrigin && requestOrigin === configuredOrigin
+    ? requestOrigin
+    : configuredOrigin;
+
+  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
@@ -63,21 +73,26 @@ function broadcast(buildId: string, event: AgentEvent): void {
 // ---------------------------------------------------------------------------
 
 app.post('/api/build', async (req: Request, res: Response) => {
-  const { prompt } = req.body as { prompt?: string };
-  if (!prompt || typeof prompt !== 'string' || prompt.trim().length < 5) {
-    res.status(400).json({ error: 'prompt is required (min 5 chars)' });
+  const parsed = BuildRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'invalid payload: prompt is required (min 5 chars)' });
     return;
   }
+
+  const prompt = parsed.data.prompt.trim();
+  const credentials = Object.fromEntries(
+    Object.entries(parsed.data.credentials ?? {}).filter(([, value]) => typeof value === 'string' && value.trim().length > 0),
+  ) as BuildCredentialOverrides;
 
   const buildId = crypto.randomUUID();
   const state: BuildState = { id: buildId, status: 'pending', events: [] };
   builds.set(buildId, state);
 
-  log.info(`Build started [${buildId}] prompt="${prompt.trim().slice(0, 80)}"`);
+  log.info(`Build started [${buildId}] prompt="${prompt.slice(0, 80)}"`);
   res.json({ buildId });
 
   // Run pipeline async
-  runPipeline(buildId, prompt.trim()).catch((err) => {
+  runPipeline(buildId, prompt, credentials).catch((err) => {
     const rawMsg = String(err?.message ?? err);
     const msg = sanitizeUserMessage(rawMsg);
     log.error(`Pipeline failed [${buildId}]`, { error: msg });
@@ -153,7 +168,11 @@ app.get('/api/build/:buildId', (req: Request, res: Response) => {
 // Pipeline runner
 // ---------------------------------------------------------------------------
 
-async function runPipeline(buildId: string, prompt: string): Promise<void> {
+async function runPipeline(
+  buildId: string,
+  prompt: string,
+  credentials: BuildCredentialOverrides,
+): Promise<void> {
   const state = builds.get(buildId)!;
   state.status = 'running';
 
@@ -164,37 +183,39 @@ async function runPipeline(buildId: string, prompt: string): Promise<void> {
     broadcast(buildId, userEvent);
   };
 
-  // 1. Parse spec
-  emit({ step: 'spec_parsed', message: 'Parsing your idea into a spec…', ts: Date.now() });
-  const spec = await parsePromptToSpec(prompt);
-  state.spec = spec;
-  emit({
-    step: 'spec_parsed',
-    message: `Spec ready: "${spec.name}" (${spec.template})`,
-    data: { spec },
-    ts: Date.now(),
+  await runWithBuildCredentials(credentials, async () => {
+    // 1. Parse spec
+    emit({ step: 'spec_parsed', message: 'Parsing your idea into a spec…', ts: Date.now() });
+    const spec = await parsePromptToSpec(prompt);
+    state.spec = spec;
+    emit({
+      step: 'spec_parsed',
+      message: `Spec ready: "${spec.name}" (${spec.template})`,
+      data: { spec },
+      ts: Date.now(),
+    });
+
+    // 2. Provision backend
+    const backendConfig = await provisionBackend(spec, emit);
+    state.backendConfig = backendConfig;
+
+    // 3. Generate code
+    await generateCode(spec, backendConfig, emit);
+
+    // 4. Deploy
+    const deployedUrl = await deployApp(spec, emit);
+    state.deployedUrl = deployedUrl;
+
+    // Notify UI immediately when deployment succeeds.
+    emit({
+      step: 'app_deployed',
+      message: `Your app is live at ${deployedUrl}`,
+      data: { url: deployedUrl },
+      ts: Date.now(),
+    });
+
+    state.status = 'done';
   });
-
-  // 2. Provision backend
-  const backendConfig = await provisionBackend(spec, emit);
-  state.backendConfig = backendConfig;
-
-  // 3. Generate code
-  await generateCode(spec, backendConfig, emit);
-
-  // 4. Deploy
-  const deployedUrl = await deployApp(spec, emit);
-  state.deployedUrl = deployedUrl;
-
-  // Notify UI immediately when deployment succeeds.
-  emit({
-    step: 'app_deployed',
-    message: `Your app is live at ${deployedUrl}`,
-    data: { url: deployedUrl },
-    ts: Date.now(),
-  });
-
-  state.status = 'done';
 }
 
 // ---------------------------------------------------------------------------

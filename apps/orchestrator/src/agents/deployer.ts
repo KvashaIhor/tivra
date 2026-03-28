@@ -4,6 +4,7 @@ import { promisify } from 'util';
 import { SaaSSpec, EmitFn } from '../types/spec';
 import { log } from '../utils/log';
 import { getBaseUrl, getAnonKey } from '../clients/insforge';
+import { getBuildCredentials } from '../runtime/buildCredentials';
 
 const execFileAsync = promisify(execFile);
 
@@ -13,13 +14,17 @@ const WORKSPACE_ROOT = path.resolve(__dirname, '../../../../');
 
 /** Build env vars that allow @insforge/cli to run non-interactively. */
 function buildCliEnv(): NodeJS.ProcessEnv {
+  const { insforgeAccessToken, insforgeProjectId } = getBuildCredentials();
+  const accessToken = insforgeAccessToken ?? process.env.INSFORGE_ACCESS_TOKEN;
+  const projectId = insforgeProjectId ?? process.env.INSFORGE_PROJECT_ID;
+
   return {
     ...process.env,
-    ...(process.env.INSFORGE_ACCESS_TOKEN
-      ? { INSFORGE_ACCESS_TOKEN: process.env.INSFORGE_ACCESS_TOKEN }
+    ...(accessToken
+      ? { INSFORGE_ACCESS_TOKEN: accessToken }
       : {}),
-    ...(process.env.INSFORGE_PROJECT_ID
-      ? { INSFORGE_PROJECT_ID: process.env.INSFORGE_PROJECT_ID }
+    ...(projectId
+      ? { INSFORGE_PROJECT_ID: projectId }
       : {}),
   };
 }

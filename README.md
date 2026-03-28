@@ -46,6 +46,11 @@ The demo UI streams every agent step in real-time via Server-Sent Events so you 
 | Deployment | InsForge hosting via `@insforge/cli` |
 | Package manager | pnpm workspaces |
 
+## App Docs
+
+- Orchestrator: [apps/orchestrator/README.md](apps/orchestrator/README.md)
+- Demo UI: [apps/demo-ui/README.md](apps/demo-ui/README.md)
+
 ---
 
 ## Project Structure

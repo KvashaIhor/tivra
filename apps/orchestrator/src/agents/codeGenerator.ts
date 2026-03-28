@@ -8,6 +8,7 @@ import { log } from '../utils/log';
 import { SaaSSpec, BackendConfig, EmitFn, LiveTableSchema } from '../types/spec';
 import { buildQuestPrompt } from '../utils/questPromptBuilder';
 import { QuestOutput, FilePatch } from '../clients/qoder';
+import { getBuildCredentials } from '../runtime/buildCredentials';
 
 /**
  * Extract the first top-level JSON object from a string that may contain
@@ -336,14 +337,11 @@ const MAX_TOTAL_CHARS = 48_000; // total template context budget
 const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'dist', '.cache']);
 const TEXT_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.json', '.css', '.md']);
 
-let _anthropic: Anthropic | null = null;
 function getAnthropic(): Anthropic {
-  if (!_anthropic) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set. Add it to apps/orchestrator/.env');
-    _anthropic = new Anthropic({ apiKey });
-  }
-  return _anthropic;
+  const { anthropicApiKey } = getBuildCredentials();
+  const apiKey = anthropicApiKey ?? process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set. Add it to apps/orchestrator/.env or provide one in the build request.');
+  return new Anthropic({ apiKey });
 }
 
 function collectTemplateFiles(
@@ -1274,7 +1272,7 @@ export async function generateCode(
 
     for (let i = PASS_BATCH_SIZE; i < spec.dbSchema.length; i += PASS_BATCH_SIZE) {
       const batchTables = spec.dbSchema.slice(i, i + PASS_BATCH_SIZE);
-      const passNum = Math.floor(i / PASS_BATCH_SIZE) + 2;
+      const passNum = Math.floor(i / PASS_BATCH_SIZE) + 1;
       emit({
         step: 'code_generated',
         message: `Pass ${passNum}/${passCount}: extending app with entities ${batchTables.map(t => t.name).join(', ')}…`,

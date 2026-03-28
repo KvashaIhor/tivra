@@ -34,3 +34,16 @@ export interface BuildState {
   qrCodeDataUrl?: string;
   error?: string;
 }
+
+export interface BuildCredentials {
+  anthropicApiKey?: string;
+  insforgeBaseUrl?: string;
+  insforgeAnonKey?: string;
+  insforgeAccessToken?: string;
+  insforgeProjectId?: string;
+}
+
+export interface BuildRequestPayload {
+  prompt: string;
+  credentials?: BuildCredentials;
+}

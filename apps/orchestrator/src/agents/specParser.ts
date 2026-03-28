@@ -3,6 +3,7 @@ import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import { SaaSSpec, SaaSSpecSchema } from '../types/spec';
 import { log } from '../utils/log';
+import { getBuildCredentials } from '../runtime/buildCredentials';
 
 function extractJson(text: string): string {
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -13,15 +14,11 @@ function extractJson(text: string): string {
   return text.trim();
 }
 
-// Lazy — instantiated on first call so a missing key doesn't crash the server on boot
-let _anthropic: Anthropic | null = null;
 function getAnthropic(): Anthropic {
-  if (!_anthropic) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set. Add it to apps/orchestrator/.env');
-    _anthropic = new Anthropic({ apiKey });
-  }
-  return _anthropic;
+  const { anthropicApiKey } = getBuildCredentials();
+  const apiKey = anthropicApiKey ?? process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set. Add it to apps/orchestrator/.env or provide one in the build request.');
+  return new Anthropic({ apiKey });
 }
 
 function loadSystemPrompt(): string {

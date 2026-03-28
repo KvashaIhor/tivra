@@ -17,6 +17,7 @@ import { promisify } from 'util';
 import path from 'path';
 import { log } from '../utils/log';
 import { LiveTableSchema } from '../types/spec';
+import { getBuildCredentials } from '../runtime/buildCredentials';
 
 const execFileAsync = promisify(execFile);
 
@@ -25,13 +26,17 @@ const WORKSPACE_ROOT = path.resolve(__dirname, '../../../../');
 
 /** Build env vars that allow @insforge/cli to run non-interactively. */
 function buildCliEnv(): NodeJS.ProcessEnv {
+  const { insforgeAccessToken, insforgeProjectId } = getBuildCredentials();
+  const accessToken = insforgeAccessToken ?? process.env.INSFORGE_ACCESS_TOKEN;
+  const projectId = insforgeProjectId ?? process.env.INSFORGE_PROJECT_ID;
+
   return {
     ...process.env,
-    ...(process.env.INSFORGE_ACCESS_TOKEN
-      ? { INSFORGE_ACCESS_TOKEN: process.env.INSFORGE_ACCESS_TOKEN }
+    ...(accessToken
+      ? { INSFORGE_ACCESS_TOKEN: accessToken }
       : {}),
-    ...(process.env.INSFORGE_PROJECT_ID
-      ? { INSFORGE_PROJECT_ID: process.env.INSFORGE_PROJECT_ID }
+    ...(projectId
+      ? { INSFORGE_PROJECT_ID: projectId }
       : {}),
   };
 }
@@ -153,10 +158,11 @@ export async function createStorageBucket(
 
 /** Base URL of the Insforge project (e.g. https://my-app.us-east.insforge.app). */
 export function getBaseUrl(): string {
-  const url = process.env.INSFORGE_BASE_URL;
+  const { insforgeBaseUrl } = getBuildCredentials();
+  const url = insforgeBaseUrl ?? process.env.INSFORGE_BASE_URL;
   if (!url) {
     throw new Error(
-      'INSFORGE_BASE_URL is not set. Copy it from your Insforge dashboard and add it to apps/orchestrator/.env',
+      'INSFORGE_BASE_URL is not set. Copy it from your Insforge dashboard, add it to apps/orchestrator/.env, or provide it in the build request.',
     );
   }
   return url;
@@ -164,10 +170,11 @@ export function getBaseUrl(): string {
 
 /** Anon key for @insforge/sdk client initialisation in the generated app. */
 export function getAnonKey(): string {
-  const key = process.env.INSFORGE_ANON_KEY;
+  const { insforgeAnonKey } = getBuildCredentials();
+  const key = insforgeAnonKey ?? process.env.INSFORGE_ANON_KEY;
   if (!key) {
     throw new Error(
-      'INSFORGE_ANON_KEY is not set. Copy it from your Insforge dashboard and add it to apps/orchestrator/.env',
+      'INSFORGE_ANON_KEY is not set. Copy it from your Insforge dashboard, add it to apps/orchestrator/.env, or provide it in the build request.',
     );
   }
   return key;

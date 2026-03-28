@@ -98,3 +98,22 @@ export interface BuildState {
   deployedUrl?: string;
   error?: string;
 }
+
+export const BuildCredentialOverridesSchema = z
+  .object({
+    anthropicApiKey: z.string().min(1).optional(),
+    insforgeBaseUrl: z.string().url().optional(),
+    insforgeAnonKey: z.string().min(1).optional(),
+    insforgeAccessToken: z.string().min(1).optional(),
+    insforgeProjectId: z.string().min(1).optional(),
+  })
+  .partial();
+
+export type BuildCredentialOverrides = z.infer<typeof BuildCredentialOverridesSchema>;
+
+export const BuildRequestSchema = z.object({
+  prompt: z.string().min(5),
+  credentials: BuildCredentialOverridesSchema.optional(),
+});
+
+export type BuildRequest = z.infer<typeof BuildRequestSchema>;

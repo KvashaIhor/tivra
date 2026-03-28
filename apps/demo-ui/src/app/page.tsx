@@ -5,11 +5,11 @@ import ProgressBar from '@/components/ProgressBar';
 import ActivityFeed from '@/components/ActivityFeed';
 import InsforgeStatusPanel from '@/components/InsforgeStatusPanel';
 import LiveCard from '@/components/LiveCard';
-import { AgentEvent, BuildState, STEPS } from '@/lib/types';
+import { AgentEvent, BuildCredentials, BuildRequestPayload, BuildState, STEPS } from '@/lib/types';
 import Image from 'next/image';
 import { ArrowRight } from 'lucide-react';
 
-const ORCHESTRATOR = process.env.NEXT_PUBLIC_ORCHESTRATOR_URL ?? 'http://localhost:3001';
+const ORCHESTRATOR = (process.env.NEXT_PUBLIC_ORCHESTRATOR_URL ?? 'http://localhost:3001').replace(/\/+$/, '');
 
 const EXAMPLE_PROMPTS = [
   { label: 'Task Board', full: 'Build a project management tool with teams, task boards, and file attachments' },
@@ -29,7 +29,8 @@ function extractUrlFromMessage(message: string): string | null {
 
 export default function HomePage() {
   const [prompt, setPrompt] = useState('');
-  const [buildId, setBuildId] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<BuildCredentials>({});
+  const [showCredentials, setShowCredentials] = useState(false);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [state, setState] = useState<BuildState | null>(null);
   const [liveDeployedUrl, setLiveDeployedUrl] = useState<string | null>(null);
@@ -41,6 +42,16 @@ export default function HomePage() {
     return Array.from(new Set(events.map((e) => e.step)));
   }
 
+  function normalizedCredentials(): BuildCredentials | undefined {
+    const cleaned = Object.fromEntries(
+      Object.entries(credentials)
+        .map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v])
+        .filter(([, v]) => typeof v === 'string' && v.length > 0),
+    ) as BuildCredentials;
+
+    return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+  }
+
   async function startBuild() {
     if (!prompt.trim() || isRunning) return;
     setIsRunning(true);
@@ -48,13 +59,17 @@ export default function HomePage() {
     setEvents([]);
     setState(null);
     setLiveDeployedUrl(null);
-    setBuildId(null);
 
     try {
+      const payload: BuildRequestPayload = {
+        prompt,
+        credentials: normalizedCredentials(),
+      };
+
       const res = await fetch(`${ORCHESTRATOR}/api/build`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -63,7 +78,6 @@ export default function HomePage() {
       }
 
       const { buildId: id } = (await res.json()) as { buildId: string };
-      setBuildId(id);
       subscribeToStream(id);
     } catch (err) {
       setError(String((err as Error).message));
@@ -179,6 +193,66 @@ export default function HomePage() {
               <p className="text-zinc-400 text-base mb-6 leading-snug max-w-md">
                 Tivra orchestrates infrastructure, code generation, and deployment in one execution pipeline.
               </p>
+
+              <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 mb-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[11px] font-mono uppercase tracking-wide text-zinc-400">Provider Credentials</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowCredentials((prev) => !prev)}
+                    className="text-[11px] font-mono text-emerald-300 hover:text-emerald-200"
+                  >
+                    {showCredentials ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {showCredentials && (
+                  <div className="mt-3 grid grid-cols-1 gap-2">
+                    <input
+                      type="password"
+                      value={credentials.anthropicApiKey ?? ''}
+                      onChange={(e) => setCredentials((prev) => ({ ...prev, anthropicApiKey: e.target.value }))}
+                      className="w-full bg-zinc-950/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-emerald-500/40"
+                      placeholder="Anthropic API Key"
+                      autoComplete="off"
+                    />
+                    <input
+                      type="text"
+                      value={credentials.insforgeBaseUrl ?? ''}
+                      onChange={(e) => setCredentials((prev) => ({ ...prev, insforgeBaseUrl: e.target.value }))}
+                      className="w-full bg-zinc-950/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-emerald-500/40"
+                      placeholder="InsForge Base URL (https://...)"
+                      autoComplete="off"
+                    />
+                    <input
+                      type="password"
+                      value={credentials.insforgeAnonKey ?? ''}
+                      onChange={(e) => setCredentials((prev) => ({ ...prev, insforgeAnonKey: e.target.value }))}
+                      className="w-full bg-zinc-950/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-emerald-500/40"
+                      placeholder="InsForge Anon Key"
+                      autoComplete="off"
+                    />
+                    <input
+                      type="password"
+                      value={credentials.insforgeAccessToken ?? ''}
+                      onChange={(e) => setCredentials((prev) => ({ ...prev, insforgeAccessToken: e.target.value }))}
+                      className="w-full bg-zinc-950/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-emerald-500/40"
+                      placeholder="InsForge Access Token"
+                      autoComplete="off"
+                    />
+                    <input
+                      type="text"
+                      value={credentials.insforgeProjectId ?? ''}
+                      onChange={(e) => setCredentials((prev) => ({ ...prev, insforgeProjectId: e.target.value }))}
+                      className="w-full bg-zinc-950/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-emerald-500/40"
+                      placeholder="InsForge Project ID"
+                      autoComplete="off"
+                    />
+                  </div>
+                )}
+                <p className="mt-2 text-[10px] text-zinc-500 font-mono">
+                  Credentials are sent with this build request only and are not shown in logs.
+                </p>
+              </div>
             </div>
 
             <div className="relative rounded-xl glass-md border border-emerald-500/20 hover:border-emerald-500/35 focus-within:border-emerald-500/30 transition-colors duration-300">
@@ -256,6 +330,71 @@ export default function HomePage() {
                 <>New Build <ArrowRight size={12} /></>
               )}
             </button>
+          </div>
+
+          <div className="flex-none rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] font-mono uppercase tracking-wide text-zinc-400">Provider Credentials</span>
+              <button
+                type="button"
+                onClick={() => setShowCredentials((prev) => !prev)}
+                className="text-[11px] font-mono text-emerald-300 hover:text-emerald-200"
+              >
+                {showCredentials ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {showCredentials && (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                <input
+                  type="password"
+                  value={credentials.anthropicApiKey ?? ''}
+                  onChange={(e) => setCredentials((prev) => ({ ...prev, anthropicApiKey: e.target.value }))}
+                  className="w-full bg-zinc-950/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-emerald-500/40"
+                  placeholder="Anthropic API Key"
+                  autoComplete="off"
+                  disabled={isRunning}
+                />
+                <input
+                  type="text"
+                  value={credentials.insforgeBaseUrl ?? ''}
+                  onChange={(e) => setCredentials((prev) => ({ ...prev, insforgeBaseUrl: e.target.value }))}
+                  className="w-full bg-zinc-950/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-emerald-500/40"
+                  placeholder="InsForge Base URL (https://...)"
+                  autoComplete="off"
+                  disabled={isRunning}
+                />
+                <input
+                  type="password"
+                  value={credentials.insforgeAnonKey ?? ''}
+                  onChange={(e) => setCredentials((prev) => ({ ...prev, insforgeAnonKey: e.target.value }))}
+                  className="w-full bg-zinc-950/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-emerald-500/40"
+                  placeholder="InsForge Anon Key"
+                  autoComplete="off"
+                  disabled={isRunning}
+                />
+                <input
+                  type="password"
+                  value={credentials.insforgeAccessToken ?? ''}
+                  onChange={(e) => setCredentials((prev) => ({ ...prev, insforgeAccessToken: e.target.value }))}
+                  className="w-full bg-zinc-950/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-emerald-500/40"
+                  placeholder="InsForge Access Token"
+                  autoComplete="off"
+                  disabled={isRunning}
+                />
+                <input
+                  type="text"
+                  value={credentials.insforgeProjectId ?? ''}
+                  onChange={(e) => setCredentials((prev) => ({ ...prev, insforgeProjectId: e.target.value }))}
+                  className="w-full bg-zinc-950/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-emerald-500/40 md:col-span-2"
+                  placeholder="InsForge Project ID"
+                  autoComplete="off"
+                  disabled={isRunning}
+                />
+              </div>
+            )}
+            <p className="mt-2 text-[10px] text-zinc-500 font-mono">
+              Credentials are sent with this build request only and are not shown in logs.
+            </p>
           </div>
 
           {error && (
